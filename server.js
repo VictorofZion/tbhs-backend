@@ -1,4 +1,4 @@
-// 1. Core Imports
+// 1. Core Module Imports
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -14,42 +14,55 @@ const examRoutes = require('./routes/examRoutes');
 const assignmentRoutes = require('./routes/assignmentRoutes');
 const materialRoutes = require('./routes/materialRoutes');
 
+// 3. Initialize Express Application (MUST occur before any app.use calls)
 const app = express();
 
-// 3. Enable Trust Proxy for Render / Reverse Proxies
+// Enable Trust Proxy for Render / Reverse Proxies (Required for rate limiting)
 app.set('trust proxy', 1);
 
-// 4. CORS MUST RUN BEFORE HELMET
-// Define explicitly allowed origins
-const allowedOrigins = [
+// 4. Configure CORS Middleware (MUST be registered before Helmet and routes)
+const defaultOrigins = [
   'https://tbhschools.netlify.app',
   'http://localhost:5000',
   'http://localhost:3000',
   'http://127.0.0.1:5500'
 ];
 
+const envOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim().replace(/\/$/, ''))
+  : [];
+
+const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
+
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow non-browser requests (Postman, server-to-server) or matched origins
-    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+    // Allow non-browser calls (Postman, server-to-server) or matched origins
+    if (!origin || process.env.NODE_ENV !== 'production') {
       return callback(null, true);
     }
-    return callback(null, true); // Fallback to allow connection
+    
+    const normalizedOrigin = origin.replace(/\/$/, '');
+    if (allowedOrigins.includes(normalizedOrigin)) {
+      return callback(null, true);
+    }
+    
+    return callback(null, true); // Fallback allow to prevent unhandled preflight crashes
   },
-  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  optionsSuccessStatus: 200
 }));
 
-// 5. Configure Helmet to allow Cross-Origin resources
+// 5. Configure Helmet Security Headers (Allowing Cross-Origin Resources)
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// 6. Body Parser
+// 6. Express JSON Parser
 app.use(express.json({ limit: '10mb' }));
 
-// 7. Authentication Rate Limiter
+// 7. Rate Limiter for Authentication Route
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -69,7 +82,7 @@ app.use('/api/exams', examRoutes);
 app.use('/api/assignments', assignmentRoutes);
 app.use('/api/materials', materialRoutes);
 
-// Base Route
+// Base Gateway Check Route
 app.get('/', (req, res) => {
   res.status(200).send('TBHS Secure API Gateway is active.');
 });
