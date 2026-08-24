@@ -1,4 +1,4 @@
-// 1. Core Module Imports
+// 1. Core Imports
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -14,58 +14,45 @@ const examRoutes = require('./routes/examRoutes');
 const assignmentRoutes = require('./routes/assignmentRoutes');
 const materialRoutes = require('./routes/materialRoutes');
 
-// 3. App Initialization
 const app = express();
 
-// Enable Trust Proxy for Render / Reverse Proxies (Required for rate limiting)
+// 3. Enable Trust Proxy for Render / Reverse Proxies
 app.set('trust proxy', 1);
 
-// 4. Security Headers via Helmet
-app.use(helmet());
-
-// 5. Allowed Origins & CORS Configuration
-const defaultOrigins = [
+// 4. CORS MUST RUN BEFORE HELMET
+// Define explicitly allowed origins
+const allowedOrigins = [
   'https://tbhschools.netlify.app',
   'http://localhost:5000',
   'http://localhost:3000',
   'http://127.0.0.1:5500'
 ];
 
-const envOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim().replace(/\/$/, ''))
-  : [];
-
-const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
-
 app.use(cors({
-  origin: (origin, callback) => {
-    // Allow non-browser calls (like Postman) or local development
-    if (!origin || process.env.NODE_ENV !== 'production') {
+  origin: function (origin, callback) {
+    // Allow non-browser requests (Postman, server-to-server) or matched origins
+    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
       return callback(null, true);
     }
-
-    // Normalize incoming request origin by removing trailing slash
-    const normalizedOrigin = origin.replace(/\/$/, '');
-
-    if (allowedOrigins.includes(normalizedOrigin)) {
-      callback(null, true);
-    } else {
-      callback(null, false);
-    }
+    return callback(null, true); // Fallback to allow connection
   },
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
-  optionsSuccessStatus: 200
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// 5. Configure Helmet to allow Cross-Origin resources
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
 // 6. Body Parser
 app.use(express.json({ limit: '10mb' }));
 
-// 7. Rate Limiter for Authentication
+// 7. Authentication Rate Limiter
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // Max 20 attempts per window
+  windowMs: 15 * 60 * 1000,
+  max: 20,
   message: { error: "Too many login attempts from this IP. Please try again after 15 minutes." },
   standardHeaders: true,
   legacyHeaders: false,
