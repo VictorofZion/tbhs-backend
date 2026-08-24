@@ -1,19 +1,11 @@
+// 1. Core Module Imports
 const express = require('express');
-const cors = require('cors'); // 1. Import cors
-
-// 2. Enable CORS for your specific frontend domain
-app.use(cors({
-  origin: 'https://tbhschools.netlify.app',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
-app.use(express.json());
-// ... rest of your routes
+const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
+// 2. Route Imports
 const authRoutes = require('./routes/authRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const academicRoutes = require('./routes/academicRoutes');
@@ -22,15 +14,16 @@ const examRoutes = require('./routes/examRoutes');
 const assignmentRoutes = require('./routes/assignmentRoutes');
 const materialRoutes = require('./routes/materialRoutes');
 
+// 3. App Initialization
 const app = express();
 
-// 1. Enable Trust Proxy for Render / Reverse Proxies (Required for express-rate-limit)
+// Enable Trust Proxy for Render / Reverse Proxies (Required for rate limiting)
 app.set('trust proxy', 1);
 
-// 2. Security Headers via Helmet
+// 4. Security Headers via Helmet
 app.use(helmet());
 
-// 3. Define Allowed Origins (Hardcoded fallbacks + trimmed ENV variables)
+// 5. Allowed Origins & CORS Configuration
 const defaultOrigins = [
   'https://tbhschools.netlify.app',
   'http://localhost:5000',
@@ -38,27 +31,25 @@ const defaultOrigins = [
   'http://127.0.0.1:5500'
 ];
 
-const envOrigins = process.env.ALLOWED_ORIGINS 
+const envOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim().replace(/\/$/, ''))
   : [];
 
 const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
 
-// 4. Safe CORS Configuration
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow non-browser calls (like Postman or server-to-server) or local development
+    // Allow non-browser calls (like Postman) or local development
     if (!origin || process.env.NODE_ENV !== 'production') {
       return callback(null, true);
     }
-    
-    // Normalize incoming request origin by removing any trailing slash
+
+    // Normalize incoming request origin by removing trailing slash
     const normalizedOrigin = origin.replace(/\/$/, '');
-    
+
     if (allowedOrigins.includes(normalizedOrigin)) {
       callback(null, true);
     } else {
-      // Pass 'false' instead of an Error to return clean 403 response without breaking preflight headers
       callback(null, false);
     }
   },
@@ -68,13 +59,13 @@ app.use(cors({
   optionsSuccessStatus: 200
 }));
 
-// 5. Express JSON Parser
+// 6. Body Parser
 app.use(express.json({ limit: '10mb' }));
 
-// 6. Rate Limiter for Authentication
+// 7. Rate Limiter for Authentication
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // Max 20 attempts
+  max: 20, // Max 20 attempts per window
   message: { error: "Too many login attempts from this IP. Please try again after 15 minutes." },
   standardHeaders: true,
   legacyHeaders: false,
@@ -82,7 +73,7 @@ const authLimiter = rateLimit({
 
 app.use('/api/auth/login', authLimiter);
 
-// 7. Mount API Routes
+// 8. Mount API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/academic', academicRoutes);
@@ -102,6 +93,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'Internal Server Error.' });
 });
 
+// 9. Start Server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`TBHS Server running on port ${PORT}`);
